@@ -1,6 +1,11 @@
 
-
 build:
-	go build -o bin/history ./functions/history
-	go build -o bin/store ./functions/store
-	go build -o bin/worker ./functions/worker
+	go build ./functions/controller
+	go build ./functions/store
+	go build ./functions/worker
+
+test:
+	go run github.com/onsi/ginkgo/ginkgo ./tests/...
+
+clean:
+	rm -f controller store worker

@@ -42,17 +42,19 @@ func main() {
 
 	resources.NewSchedule("job", "1 minutes", func(ec *faas.EventContext, next faas.EventHandler) (*faas.EventContext, error) {
 		common.RecordFact(history, ec.Request.Topic(), "scheduled event", string(ec.Request.Data()))
+
+		tasks, err := queue.Receive(10)
+		if err != nil {
+			return nil, err
+		} else {
+			for _, task := range tasks {
+				common.RecordFact(history, queue.Name(), "task complete", fmt.Sprint(task.Task().Payload))
+				task.Complete()
+			}
+		}
+
 		return next(ec)
 	})
-
-	tasks, err := queue.Receive(10)
-	if err != nil {
-		panic(err)
-	}
-	for _, task := range tasks {
-		common.RecordFact(history, queue.Name(), task.Task().ID, fmt.Sprint(task.Task().Payload))
-		task.Complete()
-	}
 
 	err = resources.Run()
 	if err != nil {

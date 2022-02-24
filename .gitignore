@@ -1,2 +1,4 @@
 .nitric/
-bin/
+store
+worker
+controller
