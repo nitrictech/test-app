@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/asalkeld/test-app/common"
@@ -15,6 +16,7 @@ import (
 )
 
 var (
+	localRun   = true
 	baseUrl    = "http://localhost:9001/apis/nitric-testr"
 	storeUrl   = baseUrl + "/store"
 	historyUrl = baseUrl + "/history"
@@ -22,7 +24,7 @@ var (
 )
 
 func listStore() ([]common.Store, error) {
-	resp, err := http.Get(storeUrl)
+	resp, err := http.Get(storeUrl + "/")
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +40,7 @@ func listStore() ([]common.Store, error) {
 }
 
 func history() ([]common.Fact, error) {
-	resp, err := http.Get(historyUrl)
+	resp, err := http.Get(historyUrl + "/")
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +128,15 @@ func sendMsg(m common.Message) error {
 }
 
 var _ = Describe("App", func() {
+
+	if os.Getenv("BASE_URL") != "" {
+		localRun = false
+		baseUrl = os.Getenv("BASE_URL")
+		storeUrl = baseUrl + "/store"
+		historyUrl = baseUrl + "/history"
+		sendUrl = baseUrl + "/send"
+	}
+
 	Context("Store", func() {
 
 		When("The store is empty", func() {
