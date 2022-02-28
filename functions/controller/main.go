@@ -118,12 +118,12 @@ func main() {
 		panic(err)
 	}
 
-	queue, err = resources.NewQueue("work", resources.QueueReceving)
+	queue, err = resources.NewQueue("work", resources.QueueSending)
 	if err != nil {
 		panic(err)
 	}
 
-	topic, err = resources.NewTopic("ping")
+	topic, err = resources.NewTopic("ping", resources.TopicPublishing)
 	if err != nil {
 		panic(err)
 	}
