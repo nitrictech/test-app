@@ -23,17 +23,11 @@ var (
 	topic   resources.Topic
 )
 
-// Updates context with error information
-func httpError(ctx *faas.HttpContext, message string, status int) {
-	ctx.Response.Body = []byte(message)
-	ctx.Response.Status = status
-}
-
 func historyGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	query := history.Query()
 	results, err := query.Fetch()
 	if err != nil {
-		return nil, err
+		return common.HttpResponse(ctx, "error querying collection: "+err.Error(), 500)
 	}
 
 	docs := make([]map[string]interface{}, 0)
@@ -43,7 +37,7 @@ func historyGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.Http
 
 	b, err := json.Marshal(docs)
 	if err != nil {
-		return nil, err
+		return common.HttpResponse(ctx, err.Error(), 400)
 	}
 
 	ctx.Response.Body = b
@@ -55,15 +49,14 @@ func historyGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.Http
 func factDeleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	params, ok := ctx.Extras["params"].(map[string]string)
 	if !ok || params == nil {
-		return nil, fmt.Errorf("error retrieving path params")
+		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
 	id := params["id"]
 
 	err := history.Doc(id).Delete()
 	if err != nil {
-		ctx.Response.Body = []byte("Error deleting document " + id)
-		ctx.Response.Status = 404
+		common.HttpResponse(ctx, "Error deleting document "+id, 404)
 	} else {
 		ctx.Response.Status = 204
 	}
@@ -74,8 +67,7 @@ func factDeleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.Http
 func sendPostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	m := &common.Message{}
 	if err := json.Unmarshal(ctx.Request.Data(), m); err != nil {
-		httpError(ctx, "error decoding json body", 400)
-		return ctx, nil
+		return common.HttpResponse(ctx, "error decoding json body", 400)
 	}
 
 	if m.ID == "" {
@@ -84,8 +76,7 @@ func sendPostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCo
 	mMap := make(map[string]interface{})
 	err := mapstructure.Decode(m, &mMap)
 	if err != nil {
-		httpError(ctx, "error decoding message document", 400)
-		return ctx, nil
+		return common.HttpResponse(ctx, "error decoding message document", 400)
 	}
 
 	switch strings.ToLower(m.MessageType) {

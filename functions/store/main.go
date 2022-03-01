@@ -20,17 +20,10 @@ var (
 	storeCol documents.CollectionRef
 )
 
-// Updates context with error information
-func httpError(ctx *faas.HttpContext, message string, status int) {
-	ctx.Response.Body = []byte(message)
-	ctx.Response.Status = status
-}
-
 func postHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	store := &common.Store{}
 	if err := json.Unmarshal(ctx.Request.Data(), store); err != nil {
-		httpError(ctx, "error decoding json body", 400)
-		return ctx, nil
+		return common.HttpResponse(ctx, "error decoding json body", 400)
 	}
 
 	// get the current time and set the store time
@@ -47,17 +40,14 @@ func postHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContex
 	storeMap := make(map[string]interface{})
 	err := mapstructure.Decode(store, &storeMap)
 	if err != nil {
-		httpError(ctx, "error decoding store document", 400)
-		return ctx, nil
+		return common.HttpResponse(ctx, "error decoding store document", 400)
 	}
 
 	if err := storeCol.Doc(store.ID).Set(storeMap); err != nil {
-		httpError(ctx, "error writing store document", 400)
-		return ctx, nil
+		return common.HttpResponse(ctx, "error writing store document", 400)
 	}
 
-	ctx.Response.Status = 200
-	ctx.Response.Body = []byte(fmt.Sprintf("Created store with ID: %s", store.ID))
+	common.HttpResponse(ctx, fmt.Sprintf("Created store with ID: %s", store.ID), 200)
 
 	return next(ctx)
 }
@@ -66,7 +56,7 @@ func listHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContex
 	query := storeCol.Query()
 	results, err := query.Fetch()
 	if err != nil {
-		return nil, err
+		return common.HttpResponse(ctx, "error querying collection: "+err.Error(), 500)
 	}
 
 	docs := make([]map[string]interface{}, 0)
@@ -78,7 +68,7 @@ func listHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContex
 
 	b, err := json.Marshal(docs)
 	if err != nil {
-		return nil, err
+		return common.HttpResponse(ctx, err.Error(), 400)
 	}
 
 	ctx.Response.Body = b
@@ -90,19 +80,18 @@ func listHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContex
 func getHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	params, ok := ctx.Extras["params"].(map[string]string)
 	if !ok || params == nil {
-		return nil, fmt.Errorf("error retrieving path params")
+		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
 	id := params["id"]
 
 	doc, err := storeCol.Doc(id).Get()
 	if err != nil {
-		ctx.Response.Body = []byte("Error retrieving document " + id)
-		ctx.Response.Status = 404
+		common.HttpResponse(ctx, "error retrieving document "+id, 404)
 	} else {
 		b, err := json.Marshal(doc.Content())
 		if err != nil {
-			return nil, err
+			return common.HttpResponse(ctx, err.Error(), 400)
 		}
 
 		ctx.Response.Headers["Content-Type"] = []string{"application/json"}
@@ -115,7 +104,7 @@ func getHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext
 func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	params, ok := ctx.Extras["params"].(map[string]string)
 	if !ok || params == nil {
-		return nil, fmt.Errorf("error retrieving path params")
+		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
 	id := params["id"]
@@ -127,8 +116,7 @@ func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext
 	} else {
 		store := &common.Store{}
 		if err := json.Unmarshal(ctx.Request.Data(), store); err != nil {
-			httpError(ctx, "error decoding json body", 400)
-			return ctx, nil
+			return common.HttpResponse(ctx, "error decoding json body", 400)
 		}
 
 		// Convert the document to a map[string]interface{}
@@ -136,17 +124,14 @@ func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext
 		storeMap := make(map[string]interface{})
 		err := mapstructure.Decode(store, &storeMap)
 		if err != nil {
-			httpError(ctx, "error decoding store document", 400)
-			return ctx, nil
+			return common.HttpResponse(ctx, "error decoding store document", 400)
 		}
 
 		if err := storeCol.Doc(id).Set(storeMap); err != nil {
-			httpError(ctx, "error writing store document", 400)
-			return ctx, nil
+			return common.HttpResponse(ctx, "error writing store document", 400)
 		}
 
-		ctx.Response.Status = 200
-		ctx.Response.Body = []byte(fmt.Sprintf("Updated store with ID: %s", id))
+		common.HttpResponse(ctx, fmt.Sprintf("Updated store with ID: %s", id), 200)
 	}
 
 	return next(ctx)
@@ -155,15 +140,14 @@ func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext
 func deleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	params, ok := ctx.Extras["params"].(map[string]string)
 	if !ok || params == nil {
-		return nil, fmt.Errorf("error retrieving path params")
+		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
 	id := params["id"]
 
 	err := storeCol.Doc(id).Delete()
 	if err != nil {
-		ctx.Response.Body = []byte("Error deleting document " + id)
-		ctx.Response.Status = 404
+		return common.HttpResponse(ctx, "error deleting document "+id, 404)
 	} else {
 		ctx.Response.Status = 204
 	}
