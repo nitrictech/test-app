@@ -129,9 +129,10 @@ func main() {
 	}
 
 	mainApi := resources.NewApi("nitric-testr")
-	mainApi.Get("/history/", historyGetHandler)
+	mainApi.Get("/history", historyGetHandler)
 	mainApi.Delete("/history/:id", common.PathParser("/history/:id"), factDeleteHandler)
-	mainApi.Post("/send/", sendPostHandler)
+
+	mainApi.Post("/send", sendPostHandler)
 
 	err = resources.Run()
 	if err != nil {

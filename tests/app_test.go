@@ -7,12 +7,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"testing"
 	"time"
+
+	. "github.com/onsi/gomega"
 
 	"github.com/asalkeld/test-app/common"
 	"github.com/google/uuid"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 )
 
 var (
@@ -23,8 +24,19 @@ var (
 	sendUrl    = baseUrl + "/send"
 )
 
+func init() {
+	if os.Getenv("BASE_URL") != "" {
+		localRun = false
+		baseUrl = os.Getenv("BASE_URL")
+		storeUrl = baseUrl + "/store"
+		historyUrl = baseUrl + "/history"
+		sendUrl = baseUrl + "/send"
+		fmt.Println(baseUrl)
+	}
+}
+
 func listStore() ([]common.Store, error) {
-	resp, err := http.Get(storeUrl + "/")
+	resp, err := http.Get(storeUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +52,7 @@ func listStore() ([]common.Store, error) {
 }
 
 func history() ([]common.Fact, error) {
-	resp, err := http.Get(historyUrl + "/")
+	resp, err := http.Get(historyUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -127,130 +139,111 @@ func sendMsg(m common.Message) error {
 	return nil
 }
 
-var _ = Describe("App", func() {
+func TestAppStore(t *testing.T) {
+	g := NewGomegaWithT(t)
 
-	if os.Getenv("BASE_URL") != "" {
-		localRun = false
-		baseUrl = os.Getenv("BASE_URL")
-		storeUrl = baseUrl + "/store"
-		historyUrl = baseUrl + "/history"
-		sendUrl = baseUrl + "/send"
+	err := deleteStore()
+	g.Expect(err).ShouldNot(HaveOccurred())
+	err = deleteHistory()
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	s, err := listStore()
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(len(s)).To(Equal(0))
+
+	err = createStore(common.Store{ID: "angus", Data: "test34"})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	err = createStore(common.Store{ID: "tim", Data: "test98"})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	s, err = listStore()
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(len(s)).To(Equal(2))
+
+	err = deleteOne(storeUrl, "angus")
+	g.Expect(err).ShouldNot(HaveOccurred())
+	err = deleteOne(storeUrl, "tim")
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	s, err = listStore()
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(len(s)).To(Equal(0))
+}
+
+func TestAppTopic(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	err := deleteHistory()
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	testID := uuid.New().String()
+	err = sendMsg(common.Message{
+		MessageType: "topic",
+		ID:          testID,
+		PayloadType: "None",
+		Payload:     "",
+	})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	hist, err := history()
+	g.Expect(err).ShouldNot(HaveOccurred())
+	found := false
+	for _, f := range hist {
+		if f.Action == "received event" {
+			fact := common.Fact{}
+			err = json.Unmarshal([]byte(f.Data), &fact)
+			g.Expect(err).ShouldNot(HaveOccurred())
+			if fact.ID == testID {
+				found = true
+				break
+			}
+		}
 	}
+	g.Expect(found).To(BeTrue())
 
-	Context("Store", func() {
+}
 
-		When("The store is empty", func() {
-			err := deleteStore()
-			Expect(err).ShouldNot(HaveOccurred())
-			err = deleteHistory()
-			Expect(err).ShouldNot(HaveOccurred())
+func TestAppQueue(t *testing.T) {
+	g := NewGomegaWithT(t)
 
-			It("list should be empty", func() {
-				s, err := listStore()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(s)).To(Equal(0))
-			})
+	err := deleteHistory()
+	g.Expect(err).ShouldNot(HaveOccurred())
 
-			It("should be able to create and get,list", func() {
-				err := createStore(common.Store{ID: "angus", Data: "test34"})
-				Expect(err).ShouldNot(HaveOccurred())
-				err = createStore(common.Store{ID: "tim", Data: "test98"})
-				Expect(err).ShouldNot(HaveOccurred())
-
-				s, err := listStore()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(s)).To(Equal(2))
-
-				err = deleteOne(storeUrl, "angus")
-				Expect(err).ShouldNot(HaveOccurred())
-				err = deleteOne(storeUrl, "tim")
-				Expect(err).ShouldNot(HaveOccurred())
-
-				s, err = listStore()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(s)).To(Equal(0))
-			})
-		})
+	testID := uuid.New().String()
+	err = sendMsg(common.Message{
+		MessageType: "queue",
+		ID:          testID,
+		PayloadType: "None",
+		Payload:     testID,
 	})
+	g.Expect(err).ShouldNot(HaveOccurred())
 
-	Context("Topic", func() {
-		When("Topic messages are sent and received", func() {
-			err := deleteHistory()
-			Expect(err).ShouldNot(HaveOccurred())
-
-			testID := uuid.New().String()
-			err = sendMsg(common.Message{
-				MessageType: "topic",
-				ID:          testID,
-				PayloadType: "None",
-				Payload:     "",
-			})
-			Expect(err).ShouldNot(HaveOccurred())
-
-			It("the message is received", func() {
-				hist, err := history()
-				Expect(err).ShouldNot(HaveOccurred())
-				found := false
-				for _, f := range hist {
-					if f.Action == "received event" {
-						fact := common.Fact{}
-						err = json.Unmarshal([]byte(f.Data), &fact)
-						Expect(err).ShouldNot(HaveOccurred())
-						if fact.ID == testID {
-							found = true
-							break
-						}
-					}
+	found := false
+	startTime := time.Now()
+	for {
+		hist, err := history()
+		g.Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println("searching for ID=", testID)
+		for _, f := range hist {
+			if f.Action == "task complete" {
+				fact := common.Fact{}
+				err = json.Unmarshal([]byte(f.Data), &fact)
+				g.Expect(err).ShouldNot(HaveOccurred())
+				fmt.Println(fact)
+				if fact.ID == testID {
+					found = true
+					break
 				}
-				Expect(found).To(BeTrue())
-			})
-		})
-	})
-
-	Context("Queue", func() {
-		When("Queue messages are sent and received", func() {
-			err := deleteHistory()
-			Expect(err).ShouldNot(HaveOccurred())
-
-			testID := uuid.New().String()
-			err = sendMsg(common.Message{
-				MessageType: "queue",
-				ID:          testID,
-				PayloadType: "None",
-				Payload:     testID,
-			})
-			Expect(err).ShouldNot(HaveOccurred())
-
-			It("the message is received", func() {
-				found := false
-				startTime := time.Now()
-				for {
-					hist, err := history()
-					Expect(err).ShouldNot(HaveOccurred())
-					for _, f := range hist {
-						fmt.Println(f)
-						if f.Action == "task complete" {
-							fact := common.Fact{}
-							err = json.Unmarshal([]byte(f.Data), &fact)
-							Expect(err).ShouldNot(HaveOccurred())
-							fmt.Println(fact)
-							if fact.ID == testID {
-								found = true
-								break
-							}
-						}
-					}
-					if found {
-						break
-					}
-					if time.Since(startTime).Seconds() > 70 {
-						break
-					}
-					fmt.Println("waiting some more...")
-					time.Sleep(10 * time.Second)
-				}
-				Expect(found).To(BeTrue())
-			})
-		})
-	})
-})
+			}
+		}
+		if found {
+			break
+		}
+		if time.Since(startTime).Seconds() > 70 {
+			break
+		}
+		fmt.Println("waiting some more...")
+		time.Sleep(10 * time.Second)
+	}
+	g.Expect(found).To(BeTrue())
+}

@@ -5,7 +5,7 @@ build:
 	go build ./functions/worker
 
 test:
-	go run github.com/onsi/ginkgo/ginkgo ./tests/...
+	go test -v ./tests/...
 
 clean:
 	rm -f controller store worker

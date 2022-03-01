@@ -180,8 +180,8 @@ func main() {
 	}
 
 	mainApi := resources.NewApi("nitric-testr")
-	mainApi.Post("/store/", postHandler)
-	mainApi.Get("/store/", listHandler)
+	mainApi.Post("/store", postHandler)
+	mainApi.Get("/store", listHandler)
 	mainApi.Get("/store/:id", common.PathParser("/store/:id"), getHandler)
 	mainApi.Put("/store/:id", common.PathParser("/store/:id"), putHandler)
 	mainApi.Delete("/store/:id", common.PathParser("/store/:id"), deleteHandler)
