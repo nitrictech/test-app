@@ -6,8 +6,8 @@ collections
 queues
 schedules
 topics
-buckets
-secrets
+buckets - TODO
+secrets - TODO
 
 test 0
 ------
@@ -28,26 +28,34 @@ delete an item
 test 2
 ------
 
-> schedules, functions
-
-there is a schedule so go and read the history and look for evidence of them running
-
-
-test 3
-------
-
 > topic
 
 post to /send/ {messageType=topic}
 > should send to topic and cause worker function to run and receive message
 > all is recorded in the history so get history and assert message sent and received
 
-
-test 4
+test 3
 ------
 
-> queue, bucket
+> queue
 
 post to /actions/ {messageType=queue}
-> should send to queue and scheduled worker should receive message and update bucket
+> should send to queue and scheduled worker should receive message
 > all is recorded in the history so get history and assert message sent and received
+
+
+How to run
+==========
+
+Clone this repo and cd into it.
+
+Then run the app, with any of these commands:
+- nitric run
+- nitric deployment apply -t <aws,azure,gcp>
+
+If you deployed, then get the api url output from the above command:
+
+```
+$ export BASE_URL=<from above>
+$ make test
+```
