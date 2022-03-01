@@ -1,13 +1,14 @@
 
-entities to test
+Entities to test
 ================
-functions
-collections
-queues
-schedules
-topics
-buckets - TODO
-secrets - TODO
+
+- functions
+- collections
+- queues
+- schedules
+- topics
+- buckets - TODO
+- secrets - TODO
 
 test 0
 ------
