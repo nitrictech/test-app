@@ -170,6 +170,41 @@ func TestAppStore(t *testing.T) {
 	g.Expect(len(s)).To(Equal(0))
 }
 
+func waitForFactID(testID, action string, waitSecs int) (bool, error) {
+	found := false
+	startTime := time.Now()
+	for {
+		hist, err := history()
+		if err != nil {
+			return false, err
+		}
+		fmt.Println("searching for ID=", testID)
+		for _, f := range hist {
+			if f.Action == action {
+				fact := common.Fact{}
+				err = json.Unmarshal([]byte(f.Data), &fact)
+				if err != nil {
+					return false, err
+				}
+				fmt.Println(fact)
+				if fact.ID == testID {
+					found = true
+					break
+				}
+			}
+		}
+		if found {
+			break
+		}
+		if time.Since(startTime).Seconds() > float64(waitSecs) {
+			break
+		}
+		fmt.Println("waiting some more...")
+		time.Sleep(10 * time.Second)
+	}
+	return found, nil
+}
+
 func TestAppTopic(t *testing.T) {
 	g := NewGomegaWithT(t)
 
@@ -185,20 +220,8 @@ func TestAppTopic(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
-	hist, err := history()
+	found, err := waitForFactID(testID, "received event", 30)
 	g.Expect(err).ShouldNot(HaveOccurred())
-	found := false
-	for _, f := range hist {
-		if f.Action == "received event" {
-			fact := common.Fact{}
-			err = json.Unmarshal([]byte(f.Data), &fact)
-			g.Expect(err).ShouldNot(HaveOccurred())
-			if fact.ID == testID {
-				found = true
-				break
-			}
-		}
-	}
 	g.Expect(found).To(BeTrue())
 
 }
@@ -218,32 +241,7 @@ func TestAppQueue(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
-	found := false
-	startTime := time.Now()
-	for {
-		hist, err := history()
-		g.Expect(err).ShouldNot(HaveOccurred())
-		fmt.Println("searching for ID=", testID)
-		for _, f := range hist {
-			if f.Action == "task complete" {
-				fact := common.Fact{}
-				err = json.Unmarshal([]byte(f.Data), &fact)
-				g.Expect(err).ShouldNot(HaveOccurred())
-				fmt.Println(fact)
-				if fact.ID == testID {
-					found = true
-					break
-				}
-			}
-		}
-		if found {
-			break
-		}
-		if time.Since(startTime).Seconds() > 70 {
-			break
-		}
-		fmt.Println("waiting some more...")
-		time.Sleep(10 * time.Second)
-	}
+	found, err := waitForFactID(testID, "task complete", 90)
+	g.Expect(err).ShouldNot(HaveOccurred())
 	g.Expect(found).To(BeTrue())
 }
