@@ -52,7 +52,7 @@ Clone this repo and cd into it.
 
 Then run the app, with any of these commands:
 - nitric run
-- nitric deployment apply -t <aws,azure,gcp>
+- nitric up -s <aws,azure,gcp>
 
 If you deployed, then get the api url output from the above command:
 
