@@ -22,6 +22,7 @@ var (
 	storeUrl   = baseUrl + "/store"
 	historyUrl = baseUrl + "/history"
 	sendUrl    = baseUrl + "/send"
+	safeUrl    = baseUrl + "/safe"
 )
 
 func init() {
@@ -31,8 +32,29 @@ func init() {
 		storeUrl = baseUrl + "/store"
 		historyUrl = baseUrl + "/history"
 		sendUrl = baseUrl + "/send"
+		safeUrl = baseUrl + "/safe"
 		fmt.Println(baseUrl)
 	}
+}
+
+func TestAppSafe(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	test := "hello this is a test"
+
+	b := []byte(test)
+	r, err := http.Post(safeUrl, http.DetectContentType(b), bytes.NewReader(b))
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(r.StatusCode).Should(Equal(200))
+
+	r, err = http.Get(safeUrl)
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(r.StatusCode).Should(Equal(200))
+
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(body).Should(Equal([]byte(test)))
 }
 
 func listStore() ([]common.Store, error) {
@@ -82,26 +104,32 @@ func deleteStore() error {
 	if err != nil {
 		return err
 	}
+
 	for _, s := range ss {
 		err = deleteOne(storeUrl, s.ID)
 		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
 func deleteHistory() error {
 	ss, err := history()
 	if err != nil {
+		fmt.Println("history ", err)
 		return err
 	}
+
 	for _, s := range ss {
 		err = deleteOne(historyUrl, s.ID)
 		if err != nil {
+			fmt.Println("deleteOne ", err)
 			return err
 		}
 	}
+
 	return nil
 }
 

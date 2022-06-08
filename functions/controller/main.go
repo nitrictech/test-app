@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/asalkeld/test-app/common"
@@ -13,6 +14,7 @@ import (
 	"github.com/nitrictech/go-sdk/api/documents"
 	"github.com/nitrictech/go-sdk/api/events"
 	"github.com/nitrictech/go-sdk/api/queues"
+	"github.com/nitrictech/go-sdk/api/secrets"
 	"github.com/nitrictech/go-sdk/faas"
 	"github.com/nitrictech/go-sdk/resources"
 )
@@ -21,6 +23,7 @@ var (
 	history documents.CollectionRef
 	queue   queues.Queue
 	topic   resources.Topic
+	safe    secrets.SecretRef
 )
 
 func historyGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
@@ -56,7 +59,7 @@ func factDeleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.Http
 
 	err := history.Doc(id).Delete()
 	if err != nil {
-		common.HttpResponse(ctx, "Error deleting document "+id, 404)
+		common.HttpResponse(ctx, "Error deleting document "+id+" err "+err.Error(), 404)
 	} else {
 		ctx.Response.Status = 204
 	}
@@ -81,13 +84,13 @@ func sendPostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCo
 
 	switch strings.ToLower(m.MessageType) {
 	case "topic":
-		topic.Publish(&events.Event{
+		_, err = topic.Publish(&events.Event{
 			ID:          m.ID,
 			PayloadType: m.PayloadType,
 			Payload:     mMap,
 		})
 	case "queue":
-		queue.Send([]*queues.Task{
+		_, err = queue.Send([]*queues.Task{
 			{
 				ID:          m.ID,
 				PayloadType: m.PayloadType,
@@ -95,9 +98,35 @@ func sendPostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCo
 			},
 		})
 	}
+	if err != nil {
+		common.HttpResponse(ctx, "error sending:"+err.Error(), 400)
+	} else {
+		ctx.Response.Status = 200
+		ctx.Response.Body = []byte(fmt.Sprintf("Run action : %v", m))
+	}
 
-	ctx.Response.Status = 200
-	ctx.Response.Body = []byte(fmt.Sprintf("Run action : %v", m))
+	return next(ctx)
+}
+
+func safePostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
+	_, err := safe.Put(ctx.Request.Data())
+	if err != nil {
+		common.HttpResponse(ctx, "error Putting:"+err.Error(), 400)
+	} else {
+		ctx.Response.Status = 200
+	}
+
+	return next(ctx)
+}
+
+func safeGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
+	sv, err := safe.Latest().Access()
+	if err != nil {
+		return common.HttpResponse(ctx, err.Error(), 400)
+	}
+
+	ctx.Response.Body = sv.AsBytes()
+	ctx.Response.Headers["Content-Type"] = []string{http.DetectContentType(ctx.Response.Body)}
 
 	return next(ctx)
 }
@@ -105,6 +134,11 @@ func sendPostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCo
 func main() {
 	var err error
 	history, err = resources.NewCollection("history", resources.CollectionReading)
+	if err != nil {
+		panic(err)
+	}
+
+	safe, err = resources.NewSecret("safe", resources.SecretEverything...)
 	if err != nil {
 		panic(err)
 	}
@@ -124,6 +158,9 @@ func main() {
 	mainApi.Delete("/history/:id", common.PathParser("/history/:id"), factDeleteHandler)
 
 	mainApi.Post("/send", sendPostHandler)
+
+	mainApi.Post("/safe", safePostHandler)
+	mainApi.Get("/safe", safeGetHandler)
 
 	err = resources.Run()
 	if err != nil {
