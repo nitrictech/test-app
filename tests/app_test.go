@@ -244,7 +244,7 @@ func TestAppTopic(t *testing.T) {
 		MessageType: "topic",
 		ID:          testID,
 		PayloadType: "None",
-		Payload:     "",
+		Payload:     testID,
 	})
 	g.Expect(err).ShouldNot(HaveOccurred())
 

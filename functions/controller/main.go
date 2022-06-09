@@ -131,26 +131,26 @@ func safeGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCon
 	return next(ctx)
 }
 
-func main() {
+func run() error {
 	var err error
-	history, err = resources.NewCollection("history", resources.CollectionReading)
+	history, err = resources.NewCollection("history", resources.CollectionReading, resources.CollectionDeleting)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	safe, err = resources.NewSecret("safe", resources.SecretEverything...)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	queue, err = resources.NewQueue("work", resources.QueueSending)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	topic, err = resources.NewTopic("ping", resources.TopicPublishing)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	mainApi := resources.NewApi("nitric-testr")
@@ -162,10 +162,12 @@ func main() {
 	mainApi.Post("/safe", safePostHandler)
 	mainApi.Get("/safe", safeGetHandler)
 
-	err = resources.Run()
-	if err != nil {
+	return resources.Run()
+}
+
+func main() {
+	err := run()
+	if err != nil && !strings.Contains(err.Error(), "EOF") {
 		panic(err)
 	}
 }
-
-// [END snippet]

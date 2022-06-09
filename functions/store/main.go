@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -171,7 +172,7 @@ func main() {
 	mainApi.Delete("/store/:id", common.PathParser("/store/:id"), deleteHandler)
 
 	err = resources.Run()
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "EOF") {
 		panic(err)
 	}
 }

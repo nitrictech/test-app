@@ -3,9 +3,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/asalkeld/test-app/common"
+	"github.com/mitchellh/mapstructure"
 	"github.com/nitrictech/go-sdk/api/documents"
 	"github.com/nitrictech/go-sdk/api/queues"
 	"github.com/nitrictech/go-sdk/faas"
@@ -41,8 +44,6 @@ func main() {
 	})
 
 	err = resources.NewSchedule("job", "1 minutes", func(ec *faas.EventContext, next faas.EventHandler) (*faas.EventContext, error) {
-		common.RecordFact(history, ec.Request.Topic(), "scheduled event", string(ec.Request.Data()))
-
 		fmt.Println("got scheduled event ", string(ec.Request.Data()))
 		tasks, err := queue.Receive(10)
 		if err != nil {
@@ -50,7 +51,20 @@ func main() {
 			return nil, err
 		} else {
 			for _, task := range tasks {
-				common.RecordFact(history, queue.Name(), "task complete", fmt.Sprint(task.Task().Payload))
+				msg := &common.Message{}
+				err := mapstructure.Decode(task.Task().Payload, msg)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				b, err := json.Marshal(msg)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				common.RecordFact(history, queue.Name(), "task complete", string(b))
 				task.Complete()
 			}
 		}
@@ -62,7 +76,7 @@ func main() {
 	}
 
 	err = resources.Run()
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "EOF") {
 		panic(err)
 	}
 }
