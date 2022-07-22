@@ -205,10 +205,19 @@ func runSchedule(name string) {
 func apiIsUp() error {
 	_, err := listStore()
 	if err != nil {
-		fmt.Println("API not up:" + err.Error())
+		fmt.Println("store API not up: " + err.Error())
+		return err
 	}
 
-	return err
+	_, err = history()
+	if err != nil {
+		fmt.Println("history API not up: " + err.Error())
+		return err
+	}
+
+	time.Sleep(2 * time.Second)
+
+	return nil
 }
 
 func waitForFactID(testID, action string) func() error {
