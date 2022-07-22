@@ -1,28 +1,30 @@
 package test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/gomega"
+	"github.com/pkg/errors"
 
 	"github.com/asalkeld/test-app/common"
-	"github.com/google/uuid"
 )
 
 var (
-	localRun   = true
-	baseUrl    = "http://localhost:9001/apis/nitric-testr"
-	storeUrl   = baseUrl + "/store"
-	historyUrl = baseUrl + "/history"
-	sendUrl    = baseUrl + "/send"
-	safeUrl    = baseUrl + "/safe"
+	localRun     = true
+	baseUrl      = "http://localhost:9001/apis/nitric-testr"
+	topicBaseURL = "http://localhost:9001/topic"
+	storeUrl     = baseUrl + "/store"
+	historyUrl   = baseUrl + "/history"
+	sendUrl      = baseUrl + "/send"
+	safeUrl      = baseUrl + "/safe"
 )
 
 func init() {
@@ -37,65 +39,108 @@ func init() {
 	}
 }
 
+func send(method, url string, data any, headers map[string]string) ([]byte, int, error) {
+	fmt.Printf("%s %s\n", method, url)
+
+	if headers == nil {
+		headers = map[string]string{}
+	}
+
+	var r io.Reader
+
+	if method == http.MethodPost || method == http.MethodPut {
+		if s, ok := data.(string); ok {
+			r = strings.NewReader(s)
+
+			headers["Content-Type"] = "text/plain; charset=utf-8"
+		} else {
+			b, err := json.Marshal(data)
+			if err != nil {
+				return nil, http.StatusBadRequest, err
+			}
+
+			headers["Content-Type"] = http.DetectContentType(b)
+			r = strings.NewReader(string(b))
+		}
+	}
+
+	req, err := http.NewRequest(method, url, r)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+
+	for k, v := range headers {
+		req.Header[k] = []string{v}
+	}
+
+	cli := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := cli.Do(req)
+	if err != nil {
+		if resp != nil {
+			return nil, resp.StatusCode, errors.WithMessagef(err, "send %s:%s", method, url)
+		}
+
+		return nil, 500, errors.WithMessagef(err, "send %s:%s", method, url)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, errors.WithMessagef(err, "send %s:%s", method, url)
+	}
+
+	return body, resp.StatusCode, errors.WithMessagef(err, "send %s:%s", method, url)
+}
+
 func TestAppSafe(t *testing.T) {
 	g := NewGomegaWithT(t)
 
 	test := "hello this is a test"
 
-	b := []byte(test)
-	r, err := http.Post(safeUrl, http.DetectContentType(b), bytes.NewReader(b))
+	_, code, err := send(http.MethodPost, safeUrl, test, map[string]string{})
 	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(r.StatusCode).Should(Equal(200))
+	g.Expect(code).Should(Equal(200))
 
-	r, err = http.Get(safeUrl)
+	r, code, err := send(http.MethodGet, safeUrl, nil, map[string]string{})
 	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(r.StatusCode).Should(Equal(200))
-
-	defer r.Body.Close()
-	body, err := io.ReadAll(r.Body)
-	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(body).Should(Equal([]byte(test)))
+	g.Expect(code).Should(Equal(200))
+	g.Expect(r).Should(Equal([]byte(test)))
 }
 
 func listStore() ([]common.Store, error) {
-	resp, err := http.Get(storeUrl)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	r, _, err := send(http.MethodGet, storeUrl, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	s := []common.Store{}
-	err = json.Unmarshal(body, &s)
+	err = json.Unmarshal(r, &s)
+
 	return s, err
 }
 
 func history() ([]common.Fact, error) {
-	resp, err := http.Get(historyUrl)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	r, _, err := send(http.MethodGet, historyUrl, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	s := []common.Fact{}
-	err = json.Unmarshal(body, &s)
+	err = json.Unmarshal(r, &s)
+
 	return s, err
 }
 
 func deleteOne(base, id string) error {
-	fmt.Println("deleting ", id)
-	req, err := http.NewRequest("DELETE", base+"/"+id, nil)
-	if err != nil {
-		return err
+	r, code, err := send(http.MethodDelete, base+"/"+id, nil, nil)
+
+	if code != http.StatusNoContent {
+		return fmt.Errorf("DELETE %s/%s failed %d %s", base, id, code, r)
 	}
-	_, err = http.DefaultClient.Do(req)
+
 	return err
 }
 
@@ -126,6 +171,7 @@ func deleteHistory() error {
 		err = deleteOne(historyUrl, s.ID)
 		if err != nil {
 			fmt.Println("deleteOne ", err)
+
 			return err
 		}
 	}
@@ -133,38 +179,36 @@ func deleteHistory() error {
 	return nil
 }
 
-func createStore(s common.Store) error {
-	b, err := json.Marshal(s)
+func createStore(s *common.Store) error {
+	b, code, err := send(http.MethodPost, storeUrl, s, nil)
 	if err != nil {
 		return err
 	}
 
-	r, err := http.Post(storeUrl, http.DetectContentType(b), bytes.NewReader(b))
-	if err != nil {
-		return err
+	if code != http.StatusOK {
+		return fmt.Errorf("Post Store %v", b)
 	}
 
-	if r.StatusCode != 200 {
-		return fmt.Errorf("Post Store %v", r)
-	}
 	return nil
 }
 
-func sendMsg(m common.Message) error {
-	b, err := json.Marshal(m)
+func sendMsg(m *common.Message) error {
+	b, code, err := send(http.MethodPost, sendUrl, m, nil)
 	if err != nil {
 		return err
 	}
 
-	r, err := http.Post(sendUrl, http.DetectContentType(b), bytes.NewReader(b))
-	if err != nil {
-		return err
+	if code != http.StatusOK {
+		return fmt.Errorf("Post Msg %v", b)
 	}
 
-	if r.StatusCode != 200 {
-		return fmt.Errorf("Post Message %v", r)
-	}
 	return nil
+}
+
+func runSchedule(name string) {
+	if localRun {
+		_, _, _ = send(http.MethodPost, topicBaseURL+"/"+name, "", map[string]string{})
+	}
 }
 
 func TestAppStore(t *testing.T) {
@@ -172,16 +216,18 @@ func TestAppStore(t *testing.T) {
 
 	err := deleteStore()
 	g.Expect(err).ShouldNot(HaveOccurred())
-	err = deleteHistory()
-	g.Expect(err).ShouldNot(HaveOccurred())
 
+	fmt.Println("about to listStore")
 	s, err := listStore()
 	g.Expect(err).ShouldNot(HaveOccurred())
 	g.Expect(len(s)).To(Equal(0))
 
-	err = createStore(common.Store{ID: "angus", Data: "test34"})
+	err = deleteHistory()
 	g.Expect(err).ShouldNot(HaveOccurred())
-	err = createStore(common.Store{ID: "tim", Data: "test98"})
+
+	err = createStore(&common.Store{ID: "angus", Data: "test34"})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	err = createStore(&common.Store{ID: "tim", Data: "test98"})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
 	s, err = listStore()
@@ -201,35 +247,47 @@ func TestAppStore(t *testing.T) {
 func waitForFactID(testID, action string, waitSecs int) (bool, error) {
 	found := false
 	startTime := time.Now()
+
 	for {
+		runSchedule("job")
+
 		hist, err := history()
 		if err != nil {
 			return false, err
 		}
+
 		fmt.Println("searching for ID=", testID)
+
 		for _, f := range hist {
 			if f.Action == action {
 				fact := common.Fact{}
+
 				err = json.Unmarshal([]byte(f.Data), &fact)
 				if err != nil {
 					return false, err
 				}
+
 				fmt.Println(fact)
+
 				if fact.ID == testID {
 					found = true
 					break
 				}
 			}
 		}
+
 		if found {
 			break
 		}
+
 		if time.Since(startTime).Seconds() > float64(waitSecs) {
 			break
 		}
+
 		fmt.Println("waiting some more...")
 		time.Sleep(10 * time.Second)
 	}
+
 	return found, nil
 }
 
@@ -240,7 +298,8 @@ func TestAppTopic(t *testing.T) {
 	g.Expect(err).ShouldNot(HaveOccurred())
 
 	testID := uuid.New().String()
-	err = sendMsg(common.Message{
+
+	err = sendMsg(&common.Message{
 		MessageType: "topic",
 		ID:          testID,
 		PayloadType: "None",
@@ -261,7 +320,7 @@ func TestAppQueue(t *testing.T) {
 	g.Expect(err).ShouldNot(HaveOccurred())
 
 	testID := uuid.New().String()
-	err = sendMsg(common.Message{
+	err = sendMsg(&common.Message{
 		MessageType: "queue",
 		ID:          testID,
 		PayloadType: "None",
