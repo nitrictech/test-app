@@ -17,6 +17,12 @@ import (
 	"github.com/asalkeld/test-app/common"
 )
 
+const (
+	pollingInterval     = 5 * time.Second
+	pollingTimeout      = 90 * time.Second
+	pollingTimeoutAPIUp = 5 * time.Minute
+)
+
 var (
 	localRun     = true
 	baseUrl      = "http://localhost:9001/apis/nitric-testr"
@@ -93,21 +99,6 @@ func send(method, url string, data any, headers map[string]string) ([]byte, int,
 	}
 
 	return body, resp.StatusCode, errors.WithMessagef(err, "send %s:%s", method, url)
-}
-
-func TestAppSafe(t *testing.T) {
-	g := NewGomegaWithT(t)
-
-	test := "hello this is a test"
-
-	_, code, err := send(http.MethodPost, safeUrl, test, map[string]string{})
-	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(code).Should(Equal(200))
-
-	r, code, err := send(http.MethodGet, safeUrl, nil, map[string]string{})
-	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(code).Should(Equal(200))
-	g.Expect(r).Should(Equal([]byte(test)))
 }
 
 func listStore() ([]common.Store, error) {
@@ -211,13 +202,80 @@ func runSchedule(name string) {
 	}
 }
 
+func apiIsUp() error {
+	_, err := listStore()
+	if err != nil {
+		fmt.Println("API not up:" + err.Error())
+	}
+
+	return err
+}
+
+func waitForFactID(testID, action string) func() error {
+	return func() error {
+		runSchedule("job")
+
+		hist, err := history()
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("searching for ID=", testID)
+
+		for _, f := range hist {
+			if f.Action == action {
+				fact := common.Fact{}
+
+				err = json.Unmarshal([]byte(f.Data), &fact)
+				if err != nil {
+					return err
+				}
+
+				fmt.Println(fact)
+
+				if fact.ID == testID {
+					return nil
+				}
+			}
+		}
+
+		return errors.New("not found")
+	}
+}
+
+func TestAppSafe(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	// esp. in CI, wait for the API to come up.
+	g.Eventually(apiIsUp).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeoutAPIUp).
+		ShouldNot(HaveOccurred())
+
+	test := "hello this is a test"
+
+	_, code, err := send(http.MethodPost, safeUrl, test, map[string]string{})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(code).Should(Equal(200))
+
+	r, code, err := send(http.MethodGet, safeUrl, nil, map[string]string{})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(code).Should(Equal(200))
+	g.Expect(r).Should(Equal([]byte(test)))
+}
+
 func TestAppStore(t *testing.T) {
 	g := NewGomegaWithT(t)
+
+	// esp. in CI, wait for the API to come up.
+	g.Eventually(apiIsUp).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeoutAPIUp).
+		ShouldNot(HaveOccurred())
 
 	err := deleteStore()
 	g.Expect(err).ShouldNot(HaveOccurred())
 
-	fmt.Println("about to listStore")
 	s, err := listStore()
 	g.Expect(err).ShouldNot(HaveOccurred())
 	g.Expect(len(s)).To(Equal(0))
@@ -244,55 +302,14 @@ func TestAppStore(t *testing.T) {
 	g.Expect(len(s)).To(Equal(0))
 }
 
-func waitForFactID(testID, action string, waitSecs int) (bool, error) {
-	found := false
-	startTime := time.Now()
-
-	for {
-		runSchedule("job")
-
-		hist, err := history()
-		if err != nil {
-			return false, err
-		}
-
-		fmt.Println("searching for ID=", testID)
-
-		for _, f := range hist {
-			if f.Action == action {
-				fact := common.Fact{}
-
-				err = json.Unmarshal([]byte(f.Data), &fact)
-				if err != nil {
-					return false, err
-				}
-
-				fmt.Println(fact)
-
-				if fact.ID == testID {
-					found = true
-					break
-				}
-			}
-		}
-
-		if found {
-			break
-		}
-
-		if time.Since(startTime).Seconds() > float64(waitSecs) {
-			break
-		}
-
-		fmt.Println("waiting some more...")
-		time.Sleep(10 * time.Second)
-	}
-
-	return found, nil
-}
-
 func TestAppTopic(t *testing.T) {
 	g := NewGomegaWithT(t)
+
+	// esp. in CI, wait for the API to come up.
+	g.Eventually(apiIsUp).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeoutAPIUp).
+		ShouldNot(HaveOccurred())
 
 	err := deleteHistory()
 	g.Expect(err).ShouldNot(HaveOccurred())
@@ -307,14 +324,20 @@ func TestAppTopic(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
-	found, err := waitForFactID(testID, "received event", 30)
-	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(found).To(BeTrue())
-
+	g.Eventually(waitForFactID(testID, "received event")).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeout).
+		ShouldNot(HaveOccurred())
 }
 
 func TestAppQueue(t *testing.T) {
 	g := NewGomegaWithT(t)
+
+	// esp. in CI, wait for the API to come up.
+	g.Eventually(apiIsUp).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeoutAPIUp).
+		ShouldNot(HaveOccurred())
 
 	err := deleteHistory()
 	g.Expect(err).ShouldNot(HaveOccurred())
@@ -328,7 +351,8 @@ func TestAppQueue(t *testing.T) {
 	})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
-	found, err := waitForFactID(testID, "task complete", 90)
-	g.Expect(err).ShouldNot(HaveOccurred())
-	g.Expect(found).To(BeTrue())
+	g.Eventually(waitForFactID(testID, "task complete")).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeout).
+		ShouldNot(HaveOccurred())
 }
