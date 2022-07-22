@@ -50,8 +50,8 @@ func historyGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.Http
 }
 
 func factDeleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params, ok := ctx.Extras["params"].(map[string]string)
-	if !ok || params == nil {
+	params := ctx.Request.PathParams()
+	if params == nil {
 		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
@@ -122,11 +122,11 @@ func safePostHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCo
 func safeGetHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
 	sv, err := safe.Latest().Access()
 	if err != nil {
-		return common.HttpResponse(ctx, err.Error(), 400)
+		common.HttpResponse(ctx, err.Error(), 400)
+	} else {
+		ctx.Response.Body = sv.AsBytes()
+		ctx.Response.Headers["Content-Type"] = []string{http.DetectContentType(ctx.Response.Body)}
 	}
-
-	ctx.Response.Body = sv.AsBytes()
-	ctx.Response.Headers["Content-Type"] = []string{http.DetectContentType(ctx.Response.Body)}
 
 	return next(ctx)
 }
@@ -155,7 +155,7 @@ func run() error {
 
 	mainApi := resources.NewApi("nitric-testr")
 	mainApi.Get("/history", historyGetHandler)
-	mainApi.Delete("/history/:id", common.PathParser("/history/:id"), factDeleteHandler)
+	mainApi.Delete("/history/:id", factDeleteHandler)
 
 	mainApi.Post("/send", sendPostHandler)
 

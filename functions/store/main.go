@@ -79,8 +79,8 @@ func listHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContex
 }
 
 func getHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params, ok := ctx.Extras["params"].(map[string]string)
-	if !ok || params == nil {
+	params := ctx.Request.PathParams()
+	if params == nil {
 		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
@@ -103,8 +103,8 @@ func getHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext
 }
 
 func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params, ok := ctx.Extras["params"].(map[string]string)
-	if !ok || params == nil {
+	params := ctx.Request.PathParams()
+	if params == nil {
 		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
@@ -139,16 +139,16 @@ func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext
 }
 
 func deleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params, ok := ctx.Extras["params"].(map[string]string)
-	if !ok || params == nil {
+	params := ctx.Request.PathParams()
+	if params == nil {
 		return common.HttpResponse(ctx, "error retrieving path params", 400)
 	}
 
 	id := params["id"]
-
+	fmt.Println(params)
 	err := storeCol.Doc(id).Delete()
 	if err != nil {
-		return common.HttpResponse(ctx, "error deleting document "+id, 404)
+		_, _ = common.HttpResponse(ctx, "error deleting document "+id, 400)
 	} else {
 		ctx.Response.Status = 204
 	}
@@ -167,9 +167,9 @@ func main() {
 	mainApi := resources.NewApi("nitric-testr")
 	mainApi.Post("/store", postHandler)
 	mainApi.Get("/store", listHandler)
-	mainApi.Get("/store/:id", common.PathParser("/store/:id"), getHandler)
-	mainApi.Put("/store/:id", common.PathParser("/store/:id"), putHandler)
-	mainApi.Delete("/store/:id", common.PathParser("/store/:id"), deleteHandler)
+	mainApi.Get("/store/:id", getHandler)
+	mainApi.Put("/store/:id", putHandler)
+	mainApi.Delete("/store/:id", deleteHandler)
 
 	err = resources.Run()
 	if err != nil && !strings.Contains(err.Error(), "EOF") {
