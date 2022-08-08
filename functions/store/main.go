@@ -11,10 +11,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/mitchellh/mapstructure"
 
-	"github.com/asalkeld/test-app/common"
 	"github.com/nitrictech/go-sdk/api/documents"
 	"github.com/nitrictech/go-sdk/faas"
 	"github.com/nitrictech/go-sdk/resources"
+	"github.com/nitrictech/test-app/common"
 )
 
 var (
@@ -164,7 +164,11 @@ func main() {
 		panic(err)
 	}
 
-	mainApi := resources.NewApi("nitric-testr")
+	mainApi, err := resources.NewApi("nitric-testr")
+	if err != nil {
+		panic(err)
+	}
+
 	mainApi.Post("/store", postHandler)
 	mainApi.Get("/store", listHandler)
 	mainApi.Get("/store/:id", getHandler)

@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/asalkeld/test-app/common"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nitrictech/go-sdk/api/documents"
 	"github.com/nitrictech/go-sdk/api/queues"
 	"github.com/nitrictech/go-sdk/faas"
 	"github.com/nitrictech/go-sdk/resources"
+	"github.com/nitrictech/test-app/common"
 )
 
 var (

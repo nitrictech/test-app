@@ -14,7 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
 
-	"github.com/asalkeld/test-app/common"
+	"github.com/nitrictech/test-app/common"
 )
 
 const (

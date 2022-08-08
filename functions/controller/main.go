@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/asalkeld/test-app/common"
 	"github.com/google/uuid"
 	"github.com/mitchellh/mapstructure"
 	"github.com/nitrictech/go-sdk/api/documents"
@@ -17,6 +16,7 @@ import (
 	"github.com/nitrictech/go-sdk/api/secrets"
 	"github.com/nitrictech/go-sdk/faas"
 	"github.com/nitrictech/go-sdk/resources"
+	"github.com/nitrictech/test-app/common"
 )
 
 var (
@@ -153,7 +153,11 @@ func run() error {
 		return err
 	}
 
-	mainApi := resources.NewApi("nitric-testr")
+	mainApi, err := resources.NewApi("nitric-testr")
+	if err != nil {
+		return err
+	}
+
 	mainApi.Get("/history", historyGetHandler)
 	mainApi.Delete("/history/:id", factDeleteHandler)
 
