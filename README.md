@@ -8,7 +8,7 @@ Entities to test
 - schedules
 - topics
 - buckets - TODO
-- secrets - TODO
+- secrets
 
 test 0
 ------

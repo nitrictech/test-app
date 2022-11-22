@@ -1,5 +1,3 @@
-// [START snippet]
-
 package main
 
 import (
@@ -13,8 +11,10 @@ import (
 	"github.com/nitrictech/go-sdk/faas"
 	"github.com/nitrictech/go-sdk/resources"
 	"github.com/nitrictech/test-app/common"
+	"google.golang.org/grpc/status"
 )
 
+// 4
 var (
 	history documents.CollectionRef
 	queue   queues.Queue
@@ -39,33 +39,50 @@ func main() {
 	}
 
 	topic.Subscribe(func(ec *faas.EventContext, next faas.EventHandler) (*faas.EventContext, error) {
-		common.RecordFact(history, ec.Request.Topic(), "received event", string(ec.Request.Data()))
+		fmt.Printf("received on %s mesg %s", ec.Request.Topic(), string(ec.Request.Data()))
+		common.RecordFact(ec.Request.Context(), history, ec.Request.Topic(), "received event", string(ec.Request.Data()))
 		return next(ec)
 	})
 
-	err = resources.NewSchedule("job", "1 minutes", func(ec *faas.EventContext, next faas.EventHandler) (*faas.EventContext, error) {
-		fmt.Println("got scheduled event ", string(ec.Request.Data()))
-		tasks, err := queue.Receive(10)
+	err = resources.NewSchedule("five-min-schedule", "5 minutes", func(ec *faas.EventContext, next faas.EventHandler) (*faas.EventContext, error) {
+		fmt.Println("scheduled job")
+
+		tasks, err := queue.Receive(ec.Request.Context(), 10)
 		if err != nil {
 			fmt.Println(err)
 			return nil, err
-		} else {
-			for _, task := range tasks {
-				msg := &common.Message{}
-				err := mapstructure.Decode(task.Task().Payload, msg)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
+		}
 
-				b, err := json.Marshal(msg)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
+		fmt.Printf("got (%d) tasks\n", len(tasks))
 
-				common.RecordFact(history, queue.Name(), "task complete", string(b))
-				task.Complete()
+		for _, task := range tasks {
+			msg := &common.Message{}
+			err := mapstructure.Decode(task.Task().Payload, msg)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			b, err := json.Marshal(msg)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			if err = task.Complete(ec.Request.Context()); err != nil {
+				fmt.Println(err)
+
+				if s, ok := status.FromError(err); ok {
+					for _, item := range s.Details() {
+						fmt.Printf("%v", item)
+					}
+
+					fmt.Printf("%v\n", s)
+				} else {
+					fmt.Printf("err type %T\n", err)
+				}
+			} else {
+				common.RecordFact(ec.Request.Context(), history, queue.Name(), "task complete", string(b))
 			}
 		}
 

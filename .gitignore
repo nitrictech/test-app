@@ -1,4 +1,6 @@
 .nitric/
+.vscode/
 store
+!functions/store/
 worker
-controller
+!functions/worker/

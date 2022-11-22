@@ -1,6 +1,5 @@
 
 build:
-	go build ./functions/controller
 	go build ./functions/store
 	go build ./functions/worker
 

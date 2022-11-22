@@ -1,3 +1,4 @@
 name: testr
 handlers:
-- functions/*/*.go
+- functions/store/main.go
+- functions/worker/main.go

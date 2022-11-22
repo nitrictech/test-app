@@ -3,6 +3,7 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -19,7 +20,7 @@ type Fact struct {
 	Data    string `json:"data"`
 }
 
-func RecordFact(col documents.CollectionRef, source, action, data string) {
+func RecordFact(ctx context.Context, col documents.CollectionRef, source, action, data string) {
 	fact := &Fact{
 		ID:      uuid.New().String(),
 		Occured: time.Now().Format(time.RFC3339),
@@ -33,7 +34,9 @@ func RecordFact(col documents.CollectionRef, source, action, data string) {
 		fmt.Println("error decoding fact document")
 	}
 
-	if err := col.Doc(fact.ID).Set(factMap); err != nil {
+	fmt.Printf("RecordFact %v", factMap)
+
+	if err := col.Doc(fact.ID).Set(ctx, factMap); err != nil {
 		fmt.Println("error writing fact to histroy document")
 	}
 }

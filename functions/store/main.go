@@ -1,173 +1,77 @@
-// [START snippet]
-
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
+	"os"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
-	"github.com/mitchellh/mapstructure"
+	"go.opentelemetry.io/otel"
 
 	"github.com/nitrictech/go-sdk/api/documents"
-	"github.com/nitrictech/go-sdk/faas"
+	"github.com/nitrictech/go-sdk/api/queues"
+	"github.com/nitrictech/go-sdk/api/secrets"
 	"github.com/nitrictech/go-sdk/resources"
-	"github.com/nitrictech/test-app/common"
 )
 
 var (
 	storeCol documents.CollectionRef
+	history  documents.CollectionRef
+	queue    queues.Queue
+	topic    resources.Topic
+	safe     secrets.SecretRef
 )
 
-func postHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	store := &common.Store{}
-	if err := json.Unmarshal(ctx.Request.Data(), store); err != nil {
-		return common.HttpResponse(ctx, "error decoding json body", 400)
-	}
-
-	// get the current time and set the store time
-	orderTime := time.Now()
-	store.DateStored = orderTime.Format(time.RFC3339)
-
-	// set the ID of the store
-	if store.ID == "" {
-		store.ID = uuid.New().String()
-	}
-
-	// Convert the document to a map[string]interface{}
-	// for storage, future iterations of the go-sdk may include direct interface{} storage as well
-	storeMap := make(map[string]interface{})
-	err := mapstructure.Decode(store, &storeMap)
+func run() error {
+	ctx := context.TODO()
+	tp, err := newTraceProvider(ctx)
 	if err != nil {
-		return common.HttpResponse(ctx, "error decoding store document", 400)
+		return err
 	}
 
-	if err := storeCol.Doc(store.ID).Set(storeMap); err != nil {
-		return common.HttpResponse(ctx, "error writing store document", 400)
-	}
+	otel.SetTracerProvider(tp)
+	defer func() {
+		tp.ForceFlush(ctx)
+		tp.Shutdown(ctx)
+	}()
 
-	common.HttpResponse(ctx, fmt.Sprintf("Created store with ID: %s", store.ID), 200)
-
-	return next(ctx)
-}
-
-func listHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	query := storeCol.Query()
-	results, err := query.Fetch()
+	safe, err = resources.NewSecret("safe", resources.SecretEverything...)
 	if err != nil {
-		return common.HttpResponse(ctx, "error querying collection: "+err.Error(), 500)
+		return err
 	}
 
-	docs := make([]map[string]interface{}, 0)
-
-	for _, doc := range results.Documents {
-		// handle documents
-		docs = append(docs, doc.Content())
-	}
-
-	b, err := json.Marshal(docs)
+	queue, err = resources.NewQueue("work", resources.QueueSending)
 	if err != nil {
-		return common.HttpResponse(ctx, err.Error(), 400)
+		return err
 	}
 
-	ctx.Response.Body = b
-	ctx.Response.Headers["Content-Type"] = []string{"application/json"}
-
-	return next(ctx)
-}
-
-func getHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params := ctx.Request.PathParams()
-	if params == nil {
-		return common.HttpResponse(ctx, "error retrieving path params", 400)
-	}
-
-	id := params["id"]
-
-	doc, err := storeCol.Doc(id).Get()
+	topic, err = resources.NewTopic("ping", resources.TopicPublishing)
 	if err != nil {
-		common.HttpResponse(ctx, "error retrieving document "+id, 404)
-	} else {
-		b, err := json.Marshal(doc.Content())
-		if err != nil {
-			return common.HttpResponse(ctx, err.Error(), 400)
-		}
-
-		ctx.Response.Headers["Content-Type"] = []string{"application/json"}
-		ctx.Response.Body = b
+		return err
 	}
-
-	return next(ctx)
-}
-
-func putHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params := ctx.Request.PathParams()
-	if params == nil {
-		return common.HttpResponse(ctx, "error retrieving path params", 400)
-	}
-
-	id := params["id"]
-
-	_, err := storeCol.Doc(id).Get()
-	if err != nil {
-		ctx.Response.Body = []byte("Error retrieving document " + id)
-		ctx.Response.Status = 404
-	} else {
-		store := &common.Store{}
-		if err := json.Unmarshal(ctx.Request.Data(), store); err != nil {
-			return common.HttpResponse(ctx, "error decoding json body", 400)
-		}
-
-		// Convert the document to a map[string]interface{}
-		// for storage, future iterations of the go-sdk may include direct interface{} storage as well
-		storeMap := make(map[string]interface{})
-		err := mapstructure.Decode(store, &storeMap)
-		if err != nil {
-			return common.HttpResponse(ctx, "error decoding store document", 400)
-		}
-
-		if err := storeCol.Doc(id).Set(storeMap); err != nil {
-			return common.HttpResponse(ctx, "error writing store document", 400)
-		}
-
-		common.HttpResponse(ctx, fmt.Sprintf("Updated store with ID: %s", id), 200)
-	}
-
-	return next(ctx)
-}
-
-func deleteHandler(ctx *faas.HttpContext, next faas.HttpHandler) (*faas.HttpContext, error) {
-	params := ctx.Request.PathParams()
-	if params == nil {
-		return common.HttpResponse(ctx, "error retrieving path params", 400)
-	}
-
-	id := params["id"]
-	fmt.Println(params)
-	err := storeCol.Doc(id).Delete()
-	if err != nil {
-		_, _ = common.HttpResponse(ctx, "error deleting document "+id, 400)
-	} else {
-		ctx.Response.Status = 204
-	}
-
-	return next(ctx)
-}
-
-func main() {
-	var err error
 
 	storeCol, err = resources.NewCollection("store", resources.CollectionWriting, resources.CollectionReading, resources.CollectionDeleting)
 	if err != nil {
-		panic(err)
+		return err
+	}
+
+	history, err = resources.NewCollection("history", resources.CollectionWriting, resources.CollectionReading, resources.CollectionDeleting)
+	if err != nil {
+		return err
 	}
 
 	mainApi, err := resources.NewApi("nitric-testr")
 	if err != nil {
-		panic(err)
+		return err
 	}
+
+	mainApi.Get("/history", historyGetHandler)
+	mainApi.Delete("/history/:id", factDeleteHandler)
+
+	mainApi.Post("/send", sendPostHandler)
+
+	mainApi.Post("/safe", safePostHandler)
+	mainApi.Get("/safe", safeGetHandler)
 
 	mainApi.Post("/store", postHandler)
 	mainApi.Get("/store", listHandler)
@@ -177,8 +81,15 @@ func main() {
 
 	err = resources.Run()
 	if err != nil && !strings.Contains(err.Error(), "EOF") {
-		panic(err)
+		return err
 	}
+
+	return nil
 }
 
-// [END snippet]
+func main() {
+	if err := run(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}

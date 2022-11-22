@@ -118,9 +118,13 @@ func listStore() ([]common.Store, error) {
 }
 
 func history() ([]common.Fact, error) {
-	r, _, err := send(http.MethodGet, historyUrl, nil, nil)
+	r, code, err := send(http.MethodGet, historyUrl, nil, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if code != http.StatusOK {
+		return nil, errors.New(string(r))
 	}
 
 	s := []common.Fact{}
@@ -194,7 +198,7 @@ func sendMsg(m *common.Message) error {
 	}
 
 	if code != http.StatusOK {
-		return fmt.Errorf("Post Msg %v", b)
+		return fmt.Errorf("Post Msg %v", string(b))
 	}
 
 	return nil
@@ -265,16 +269,27 @@ func TestAppSafe(t *testing.T) {
 		WithTimeout(pollingTimeoutAPIUp).
 		ShouldNot(HaveOccurred())
 
-	test := "hello this is a test"
+	type js struct {
+		Name  string `json:"name"`
+		Taste string `json:"taste"`
+	}
 
-	_, code, err := send(http.MethodPost, safeUrl, test, map[string]string{})
+	j := &js{
+		Name:  "apple",
+		Taste: "sometimes great, sometimes not",
+	}
+
+	test, err := json.Marshal(j)
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	_, code, err := send(http.MethodPost, safeUrl, j, map[string]string{})
 	g.Expect(err).ShouldNot(HaveOccurred())
 	g.Expect(code).Should(Equal(200))
 
 	r, code, err := send(http.MethodGet, safeUrl, nil, map[string]string{})
 	g.Expect(err).ShouldNot(HaveOccurred())
 	g.Expect(code).Should(Equal(200))
-	g.Expect(r).Should(Equal([]byte(test)))
+	g.Expect(r).Should(Equal(test))
 }
 
 func TestAppStore(t *testing.T) {
@@ -315,7 +330,7 @@ func TestAppStore(t *testing.T) {
 	g.Expect(len(s)).To(Equal(0))
 }
 
-func TestAppTopic(t *testing.T) {
+func TestAppTopicImmediate(t *testing.T) {
 	g := NewGomegaWithT(t)
 
 	// esp. in CI, wait for the API to come up.
@@ -334,6 +349,36 @@ func TestAppTopic(t *testing.T) {
 		ID:          testID,
 		PayloadType: "None",
 		Payload:     testID,
+		Delay:       0,
+	})
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	g.Eventually(waitForFactID(testID, "received event")).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeout).
+		ShouldNot(HaveOccurred())
+}
+
+func TestAppTopicDelay(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	// esp. in CI, wait for the API to come up.
+	g.Eventually(apiIsUp).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeoutAPIUp).
+		ShouldNot(HaveOccurred())
+
+	err := deleteHistory()
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	testID := uuid.New().String()
+
+	err = sendMsg(&common.Message{
+		MessageType: "topic",
+		ID:          testID,
+		PayloadType: "None",
+		Payload:     testID,
+		Delay:       10,
 	})
 	g.Expect(err).ShouldNot(HaveOccurred())
 
