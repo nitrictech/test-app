@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	pollingInterval     = 5 * time.Second
+	pollingInterval     = 30 * time.Second
 	pollingTimeout      = 90 * time.Second
 	pollingTimeoutAPIUp = 5 * time.Minute
 )
@@ -31,6 +31,7 @@ var (
 	historyUrl   = baseUrl + "/history"
 	sendUrl      = baseUrl + "/send"
 	safeUrl      = baseUrl + "/safe"
+	fileUrl      = baseUrl + "/file"
 )
 
 func init() {
@@ -45,6 +46,7 @@ func init() {
 		historyUrl = baseUrl + "/history"
 		sendUrl = baseUrl + "/send"
 		safeUrl = baseUrl + "/safe"
+		fileUrl = baseUrl + "/file"
 		fmt.Println(baseUrl)
 	}
 }
@@ -84,7 +86,7 @@ func send(method, url string, data any, headers map[string]string) ([]byte, int,
 	}
 
 	cli := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 20 * time.Second,
 	}
 
 	resp, err := cli.Do(req)
@@ -230,7 +232,7 @@ func apiIsUp() error {
 
 func waitForFactID(testID, action string) func() error {
 	return func() error {
-		runSchedule("job")
+		runSchedule("five-min-schedule")
 
 		hist, err := history()
 		if err != nil {
@@ -258,6 +260,51 @@ func waitForFactID(testID, action string) func() error {
 
 		return errors.New("not found")
 	}
+}
+
+func TestAppFile(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	// esp. in CI, wait for the API to come up.
+	g.Eventually(apiIsUp).
+		WithPolling(pollingInterval).
+		WithTimeout(pollingTimeoutAPIUp).
+		ShouldNot(HaveOccurred())
+
+	type fr struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+
+	f := &fr{
+		Name: "apple.txt",
+		URL:  "",
+	}
+
+	content := "hello test, ABC 564 foo"
+
+	b, code, err := send(http.MethodPost, fileUrl, f, map[string]string{})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(code).Should(Equal(200))
+
+	err = json.Unmarshal(b, &f)
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	_, code, err = send(http.MethodPut, f.URL, content, map[string]string{})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(code).Should(Equal(200))
+
+	b, code, err = send(http.MethodGet, fileUrl+"/apple.txt", nil, map[string]string{})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(code).Should(Equal(200))
+
+	err = json.Unmarshal(b, &f)
+	g.Expect(err).ShouldNot(HaveOccurred())
+
+	b, code, err = send(http.MethodGet, f.URL, b, map[string]string{})
+	g.Expect(err).ShouldNot(HaveOccurred())
+	g.Expect(code).Should(Equal(200))
+	g.Expect(b).To(Equal([]byte(content)))
 }
 
 func TestAppSafe(t *testing.T) {
@@ -411,6 +458,6 @@ func TestAppQueue(t *testing.T) {
 
 	g.Eventually(waitForFactID(testID, "task complete")).
 		WithPolling(pollingInterval).
-		WithTimeout(pollingTimeout).
+		WithTimeout(10 * time.Minute).
 		ShouldNot(HaveOccurred())
 }

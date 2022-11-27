@@ -7,9 +7,10 @@ import (
 )
 
 // Updates context with error information
-func HttpResponse(ctx *faas.HttpContext, message string, status int) (*faas.HttpContext, error) {
+func HttpResponse(hc *faas.HttpContext, message string, status int) *faas.HttpContext {
 	fmt.Println(message)
-	ctx.Response.Body = []byte(message)
-	ctx.Response.Status = status
-	return ctx, nil
+	hc.Response.Body = []byte(message)
+	hc.Response.Status = status
+
+	return hc
 }

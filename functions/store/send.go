@@ -18,7 +18,7 @@ func sendPostHandler(hc *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCon
 	fmt.Println("sendPostHandler")
 	m := &common.Message{}
 	if err := json.Unmarshal(hc.Request.Data(), m); err != nil {
-		return common.HttpResponse(hc, "error decoding json body", 400)
+		return next(common.HttpResponse(hc, "error decoding json body", 400))
 	}
 
 	if m.ID == "" {
@@ -29,7 +29,7 @@ func sendPostHandler(hc *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCon
 
 	err := mapstructure.Decode(m, &mMap)
 	if err != nil {
-		return common.HttpResponse(hc, "error decoding message document", 400)
+		return next(common.HttpResponse(hc, "error decoding message document", 400))
 	}
 
 	switch strings.ToLower(m.MessageType) {
@@ -52,12 +52,12 @@ func sendPostHandler(hc *faas.HttpContext, next faas.HttpHandler) (*faas.HttpCon
 		err = fmt.Errorf("unknown message type %s", m.MessageType)
 	}
 	if err != nil {
-		_, _ = common.HttpResponse(hc, "error sending:"+err.Error(), 400)
-	} else {
-		fmt.Printf("sent message id %s", m.ID)
-		hc.Response.Status = 200
-		hc.Response.Body = []byte(fmt.Sprintf("Run action : %v", m))
+		return next(common.HttpResponse(hc, "error sending:"+err.Error(), 400))
 	}
+
+	fmt.Printf("sent message id %s", m.ID)
+	hc.Response.Status = 200
+	hc.Response.Body = []byte(fmt.Sprintf("Run action : %v", m))
 
 	return next(hc)
 }
