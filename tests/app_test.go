@@ -34,6 +34,10 @@ var (
 )
 
 func init() {
+	if os.Getenv("TOPIC_BASE_URL") != "" {
+		topicBaseURL = os.Getenv("TOPIC_BASE_URL")
+	}
+
 	if os.Getenv("BASE_URL") != "" {
 		localRun = false
 		baseUrl = os.Getenv("BASE_URL")
