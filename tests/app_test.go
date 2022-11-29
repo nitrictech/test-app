@@ -39,8 +39,8 @@ func init() {
 	}
 
 	if os.Getenv("BASE_URL") != "" {
-		localRun = false
 		baseUrl = os.Getenv("BASE_URL")
+		localRun = strings.Contains(baseUrl, "localhost") || strings.Contains(baseUrl, "127.0.0.1")
 		storeUrl = baseUrl + "/store"
 		historyUrl = baseUrl + "/history"
 		sendUrl = baseUrl + "/send"
