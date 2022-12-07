@@ -7,7 +7,7 @@ Entities to test
 - queues
 - schedules
 - topics
-- buckets - TODO
+- buckets
 - secrets
 
 test 0

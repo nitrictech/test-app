@@ -25,8 +25,8 @@ const (
 
 var (
 	localRun     = true
-	baseUrl      = "http://localhost:9001/apis/nitric-testr"
-	topicBaseURL = "http://localhost:9001/topic"
+	baseUrl      = "http://localhost:4001"
+	topicBaseURL = "http://localhost:4000/topic"
 	storeUrl     = baseUrl + "/store"
 	historyUrl   = baseUrl + "/history"
 	sendUrl      = baseUrl + "/send"
