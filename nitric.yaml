@@ -1,4 +1,7 @@
 name: testr
 handlers:
-- functions/store/main.go
-- functions/worker/main.go
+  - functions/store/main.go
+containers:
+  - dockerfile: docker/golang.dockerfile
+    args:
+      HANDLER: functions/worker/main.go
